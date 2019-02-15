@@ -1,16 +1,26 @@
 package com.example.sakthivel.retrofitapp;
 
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.os.Build;
 import android.support.annotation.NonNull;
+import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.DefaultItemAnimator;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.util.Log;
+import android.view.View;
+import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
+import com.google.firebase.FirebaseApp;
 import com.google.firebase.iid.FirebaseInstanceId;
 import com.google.firebase.iid.InstanceIdResult;
 
@@ -29,53 +39,95 @@ public class MainActivity extends AppCompatActivity {
 
     private List<Albums> movieList = new ArrayList<>();
     private RecyclerView recyclerView;
-    private MoviesAdapter mAdapter;
+    private MoviesAdapter moviesAdapter;
     Albums albums;
+
+    SharedPreferences sharedPreferences;
+    SharedPreferences.Editor editor;
+
+    private BroadcastReceiver mNetworkReceiver;
+    static RelativeLayout relativeLayout;
+    String networkStatus;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        FirebaseInstanceId.getInstance().getInstanceId()
-                .addOnCompleteListener(new OnCompleteListener<InstanceIdResult>() {
-                    @Override
-                    public void onComplete(@NonNull Task<InstanceIdResult> task) {
-                        if (!task.isSuccessful()) {
-                            Log.w(TAG, "getInstanceId failed", task.getException());
-                            return;
-                        }
-                        // Get new Instance ID token
-                        String token = task.getResult().getToken();
-                        // Log and toast
-                        String msg = getString(R.string.msg_token_fmt, token);
-                        Log.d(TAG, msg);
-                        Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show();
-                    }
-                });
+        mNetworkReceiver = new NetworkChangeReceiver();
+        registerNetworkBroadcastForNougat();
 
+        relativeLayout = findViewById(R.id.relative_layout);
+
+
+        FirebaseApp.initializeApp(MainActivity.this);
+
+        FirebaseInstanceId.getInstance().getInstanceId().addOnCompleteListener(new OnCompleteListener<InstanceIdResult>() {
+            @Override
+            public void onComplete(@NonNull Task<InstanceIdResult> task) {
+                if(!task.isSuccessful()){
+                    Log.w(TAG, "Failed to get Instance Id", task.getException());
+                    return;
+                }
+                String instanceId = task.getResult().getToken();        // Get the value of Firebase Instance Id or token id
+                String message = getString(R.string.instance_id, instanceId);
+                Log.d(TAG, message);                                    // Log and toast the message value
+                //Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        sharedPreferences = getSharedPreferences("Retrofit_Api", MODE_PRIVATE);  // Specify preference name and preference method
+        editor = sharedPreferences.edit();
 
         recyclerView = (RecyclerView) findViewById(R.id.recycler_view);
-
-        mAdapter = new MoviesAdapter(movieList);
-        //RecyclerView.LayoutManager mLayoutManager = new LinearLayoutManager(getApplicationContext(), LinearLayoutManager.HORIZONTAL, false);
+        moviesAdapter = new MoviesAdapter(movieList);
         RecyclerView.LayoutManager mLayoutManager = new LinearLayoutManager(getApplicationContext());
         recyclerView.setLayoutManager(mLayoutManager);
         recyclerView.setItemAnimator(new DefaultItemAnimator());
-        recyclerView.setAdapter(mAdapter);
+        recyclerView.setAdapter(moviesAdapter);
 
-        if(BuildConfig.FLAVOR.equals("trial")){
-            getTrial();
+        String titleshare = sharedPreferences.getString("title", "");     // Get the value for title from shared preference
+        String idshare = sharedPreferences.getString("id", "");           // Get the value for id from shared preference
+        String useridshare = sharedPreferences.getString("userid", "");   // Get the value for user id from shared preference
+
+        if(idshare.equals("")) {
+            if (BuildConfig.FLAVOR.equals("trial")) {
+                getTrial();                                        // If trial version means getTrial() function will be call
+            } else if (BuildConfig.FLAVOR.equals("full")) {
+                getFull();                                         // If full version means getFull() function will be call
+            }
         }
-        else if(BuildConfig.FLAVOR.equals("full")){
-            getFull();
+        else {
+            String[] title = titleshare.split(",");         // Split title using "," and store to the string array
+            String[] id = idshare.split(",");               // Split id using "," and store to the string array
+            String[] userid = useridshare.split(",");       // Split user id using "," and store to the string array
+
+            for(int i=0;i<title.length;i++){
+                albums = new Albums(userid[i], id[i], title[i]);     // Albums constructor is called and store the datas
+                movieList.add(albums);                            // Class instance add or store to the List
+            }
+            moviesAdapter.notifyDataSetChanged();                 // Note the datas are changed or not
         }
 
+
+        recyclerView.addOnItemTouchListener(new RecyclerTouchListener(this, recyclerView,
+                new RecyclerTouchListener.ClickListener() {
+                    @Override
+                    public void onClick(View view, int position) {
+                        Albums albums1 = movieList.get(position);
+                        startActivity(new Intent(MainActivity.this, HomeActivity.class));
+                    }
+
+                    @Override
+                    public void onLongClick(View view, int position) {
+                        Toast.makeText(MainActivity.this, "long click", Toast.LENGTH_SHORT).show();
+                    }
+                }));
 }
 
     private void getTrial(){
-        Albums albums = new Albums("Mad Max: Fury Road", "Action & Adventure", "2015");
-        movieList.add(albums);
+        Albums albums = new Albums("Mad Max: Fury Road", "Action & Adventure", "2015");    // Albums constructor is called and store the datas
+        movieList.add(albums);                                                                             // Class instance add or store to the List
 
         albums = new Albums("Inside Out", "Animation, Kids & Family", "2015");
         movieList.add(albums);
@@ -122,11 +174,11 @@ public class MainActivity extends AppCompatActivity {
         albums = new Albums("Guardians of the Galaxy", "Science Fiction & Fantasy", "2014");
         movieList.add(albums);
 
-        mAdapter.notifyDataSetChanged();
+        moviesAdapter.notifyDataSetChanged();
     }
 
     private void getFull() {
-        Retrofit retrofit = new Retrofit.Builder().baseUrl(Api.BASE_URL).addConverterFactory(GsonConverterFactory.create()).build();
+        Retrofit retrofit = new Retrofit.Builder().baseUrl(Api.BASE_URL).addConverterFactory(GsonConverterFactory.create()).build();  // Create retrofit builder and initialize url
 
         final Api api = retrofit.create(Api.class);
 
@@ -148,8 +200,23 @@ public class MainActivity extends AppCompatActivity {
 
                     albums = new Albums(userId[i], id[i], title[i]);
                     movieList.add(albums);
-                    mAdapter.notifyDataSetChanged();
+                    moviesAdapter.notifyDataSetChanged();
                 }
+
+                StringBuilder sbtitle = new StringBuilder();
+                StringBuilder sbid = new StringBuilder();
+                StringBuilder sbuserid = new StringBuilder();
+
+                for (int i = 0; i < title.length; i++) {
+                    sbtitle.append(title[i]).append(",");          // title values are stored to sbtitle
+                    sbid.append(id[i]).append(",");                // id values are stored to sbid
+                    sbuserid.append(userId[i]).append(",");        // user id values are stored to sbuserid
+                }
+
+                editor.putString("title", String.valueOf(sbtitle));   // key is used to identify the data
+                editor.putString("id", String.valueOf(sbid));
+                editor.putString("userid", String.valueOf(sbuserid));
+                editor.apply();                                       // come back from edit
 
             }
 
@@ -158,6 +225,39 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(getApplicationContext(), t.getMessage(), Toast.LENGTH_SHORT).show();
             }
         });
+    }
+
+    public static void dialog(boolean status, String message){
+        if(status){
+            Snackbar snackbar = Snackbar.make(relativeLayout, ""+message, Snackbar.LENGTH_LONG);
+            snackbar.show();
+        }else {
+            Snackbar snackbar = Snackbar.make(relativeLayout, ""+message, Snackbar.LENGTH_LONG);
+            snackbar.show();
+        }
+    }
+
+    private void registerNetworkBroadcastForNougat() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            registerReceiver(mNetworkReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            registerReceiver(mNetworkReceiver, new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION));
+        }
+    }
+
+    protected void unregisterNetworkChanges() {
+        try {
+            unregisterReceiver(mNetworkReceiver);
+        } catch (IllegalArgumentException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        unregisterNetworkChanges();
     }
 
 }

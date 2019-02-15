@@ -15,20 +15,18 @@ public class MyFirebaseMessagingService extends FirebaseMessagingService {
     public void onMessageReceived(RemoteMessage remoteMessage) {
 
         Intent intent = new Intent(this, MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);                               // Notification is display on the top position
 
-        PendingIntent pendingIntent = PendingIntent.getActivity(this,0, intent, PendingIntent.FLAG_ONE_SHOT);
+        PendingIntent pendingIntent = PendingIntent.getActivity(this,0, intent, PendingIntent.FLAG_ONE_SHOT);      // used only once
 
         NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this);
         notificationBuilder.setContentTitle("FCM Notification");
         notificationBuilder.setContentTitle(remoteMessage.getNotification().getBody());
-        notificationBuilder.setAutoCancel(false);
-        notificationBuilder.setSmallIcon(R.drawable.ic_favorite_true);
-        notificationBuilder.setContentIntent(pendingIntent);
-        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        notificationManager.notify(0,notificationBuilder.build());
+        notificationBuilder.setAutoCancel(false);                                       // when user click notification, it was canceled
+        notificationBuilder.setContentIntent(pendingIntent);                            // if notification clicked, pendingintent called
+        NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);   // Service for notification
+        notificationManager.notify(0,notificationBuilder.build());                  // Notification will create
 
     }
-
 
 }
